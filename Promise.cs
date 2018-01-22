@@ -542,6 +542,15 @@ namespace DWulf
                         yield return (yielded as ActiveCoroutine).GetActiveImp();
                         continue;
                     }
+                    // check this after ActiveCoroutine
+                    if (yielded is Promise)
+                    {
+                        // Not a coroutine itself, so wait for it manually.
+                        var promise = yielded as Promise;
+                        while (!promise.isDone)
+                            yield return null;
+                        continue;
+                    }
                     if (yielded is Exception)
                     {
                         ActiveImp = null;
@@ -644,6 +653,15 @@ namespace DWulf
                         // For now, yield in naive way.
                         // Even if GetActiveImp returns null, still ok to wait for next frame.
                         yield return (yielded as ActiveCoroutine).GetActiveImp();
+                        continue;
+                    }
+                    // check this after ActiveCoroutine
+                    if (yielded is Promise)
+                    {
+                        // Not a coroutine itself, so wait for it manually.
+                        var promise = yielded as Promise;
+                        while (!promise.isDone)
+                            yield return null;
                         continue;
                     }
                     if (yielded.GetType() == typeof(T))
