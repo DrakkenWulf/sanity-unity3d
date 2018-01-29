@@ -515,6 +515,7 @@ namespace DWulf
                     if (!coroutine.MoveNext())
                     {
                         ActiveImp = null;
+                        Succeed();
                         yield break;
                     }
                 } catch (Exception e)
