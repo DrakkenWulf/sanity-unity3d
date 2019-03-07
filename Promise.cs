@@ -23,7 +23,7 @@ using UnityEngine;
 using System;
 using System.Collections;
 
-namespace DWulf
+namespace DWulf.Async
 {
     /// <summary>
     /// a standardized wrapper to returning an asynchronous result to a consumer.
@@ -91,7 +91,7 @@ namespace DWulf
         /// Safer is to use WaitForCompletion.
         /// If proc is already done, expect it to be called immediately.
         /// </remarks>
-        public void OnSucceed(Action doneProc)
+        public Promise OnSucceed(Action doneProc)
         {
             if (isDone)
             {
@@ -101,6 +101,8 @@ namespace DWulf
                     doneProc();
             } else
                 _doneProc = doneProc;
+            
+            return this;
         }
 
         /// <summary>
@@ -112,7 +114,7 @@ namespace DWulf
         /// Safer is to use WaitForCompletion.
         /// If proc is already done, expect it to be called immediately.
         /// </remarks>
-        public void OnFail(Action<Exception> doneProc)
+        public Promise OnFail(Action<Exception> doneProc)
         {
             if (isDone)
             {
@@ -122,6 +124,31 @@ namespace DWulf
                     doneProc(Error);
             } else
                 _errProc = doneProc;
+            
+            return this;
+        }
+
+        /// <summary>
+        /// Set a callback for both succeed or fail.
+        /// </summary>
+        /// <remarks>
+        /// Preferred is watching isDone to complete because we want to avoid boomerang hell.
+        /// WARNING - This may call your object *after* it has been destroyed!
+        /// Safer is to use WaitForCompletion.
+        /// If proc is already done, expect it to be called immediately.
+        /// </remarks>
+        public Promise OnFinally(Action doneProc)
+        {
+            if (isDone)
+            {
+                // We explicitly don't bother with all the exception wrapping here as the 
+                // stack trace will already indicate the originating caller's true location.
+                doneProc();
+
+            } else
+                _finallyProc = doneProc;
+            
+            return this;
         }
 
         #endregion
@@ -144,6 +171,11 @@ namespace DWulf
         /// Called when error occurs.
         /// </summary>
         protected Action<Exception> _errProc;
+
+        /// <summary>
+        /// called when done (success or fail), no return value
+        /// </summary>
+        protected Action _finallyProc;
 
         /// <summary>
         /// Last known error, or null
@@ -214,7 +246,7 @@ namespace DWulf
         /// Safer is to use WaitForCompletion.
         /// If proc is already done, expect it to be called immediately.
         /// </remarks>
-        public void OnSucceed(Action<T> result)
+        public Promise<T> OnSucceed(Action<T> result)
         {
             if (isDone)
             {
@@ -225,6 +257,8 @@ namespace DWulf
             }
             else
                 _valProc = result;
+
+            return this;
         }
 
         /// <summary>
@@ -236,7 +270,7 @@ namespace DWulf
         /// Safer is to use WaitForCompletion.
         /// If proc is already done, expect it to be called immediately.
         /// </remarks>
-        public new void OnFail(Action<Exception> doneProc)
+        public new Promise<T> OnFail(Action<Exception> doneProc)
         {
             if (isDone)
             {
@@ -246,6 +280,8 @@ namespace DWulf
                     doneProc(Error);
             } else
                 _errProc = doneProc;
+
+            return this;            
         }
 
         #endregion
@@ -279,7 +315,7 @@ namespace DWulf
         /// Mark task completed
         /// </summary>
         /// <returns>self</returns>
-        public Promise Succeed()
+        public Answer Succeed()
         {
 #if DEBUG
             if (isDone)
@@ -288,11 +324,22 @@ namespace DWulf
 
             isDone = true;
 
-            // This might be overly paranoid, but i think I should swap these.
-            var proc = _doneProc;
-            _doneProc = null;
-            if (proc != null)
-                proc();
+            {
+                // This might be overly paranoid, but i think I should swap these.
+                var proc = _doneProc;
+                _doneProc = null;
+                if (proc != null)
+                    proc();
+            }
+
+            {
+                // This might be overly paranoid, but i think I should swap these.
+                var proc = _finallyProc;
+                _finallyProc = null;
+                if (proc != null)
+                    proc();
+            }
+
             return this;
         }
 
@@ -303,7 +350,7 @@ namespace DWulf
         /// <remarks>
         /// be sure to give us some kinda idea what went wrong.
         /// </remarks>
-        public Promise Fail(Exception e)
+        public Answer Fail(Exception e)
         {
 #if DEBUG
             if (isDone)
@@ -313,11 +360,22 @@ namespace DWulf
             Error = Wrap(e ?? new ApplicationException("Fail with no exception"));
             isDone = true;
 
-            // This might be overly paranoid, but i think I should swap these.
-            var proc = _errProc;
-            _errProc = null;
-            if (proc != null)
-                proc(Error);
+            {
+                // This might be overly paranoid, but i think I should swap these.
+                var proc = _errProc;
+                _errProc = null;
+                if (proc != null)
+                    proc(Error);
+            }
+            
+            {
+                // This might be overly paranoid, but i think I should swap these.
+                var proc = _finallyProc;
+                _finallyProc = null;
+                if (proc != null)
+                    proc();
+            }
+
             return this;
         }
 
@@ -406,7 +464,7 @@ namespace DWulf
         /// Mark task completed
         /// </summary>
         /// <returns>self</returns>
-        public Promise<T> Succeed(T value)
+        public Answer<T> Succeed(T value)
         {
 #if DEBUG
             if (isDone)
@@ -415,17 +473,30 @@ namespace DWulf
             Value = value;
             isDone = true;
 
-            // This might be overly paranoid, but i think I should swap these.
-            var proc = _doneProc;
-            _doneProc = null;
-            if (proc != null)
-                proc();
+            {
+                // This might be overly paranoid, but i think I should swap these.
+                var proc = _doneProc;
+                _doneProc = null;
+                if (proc != null)
+                    proc();
+            }
 
-            // This might be overly paranoid, but i think I should swap these.
-            var proc2 = _valProc;
-            _valProc = null;
-            if (proc2 != null)
-                proc2(value);
+            {
+                // This might be overly paranoid, but i think I should swap these.
+                var proc2 = _valProc;
+                _valProc = null;
+                if (proc2 != null)
+                    proc2(value);
+            }
+
+            {
+                // This might be overly paranoid, but i think I should swap these.
+                var proc = _finallyProc;
+                _finallyProc = null;
+                if (proc != null)
+                    proc();
+            }
+
             return this;
         }
 
@@ -436,7 +507,7 @@ namespace DWulf
         /// <remarks>
         /// be sure to give us some kinda idea what went wrong.
         /// </remarks>
-        public Promise<T> Fail(Exception e)
+        public Answer<T> Fail(Exception e)
         {
 #if DEBUG
             if (isDone)
@@ -446,11 +517,22 @@ namespace DWulf
             Error = e ?? new ApplicationException("Fail with no exception");
             isDone = true;
 
-            // This might be overly paranoid, but i think I should swap these.
-            var proc = _errProc;
-            _errProc = null;
-            if (proc != null)
-                proc(Error);
+            {
+                // This might be overly paranoid, but i think I should swap these.
+                var proc = _errProc;
+                _errProc = null;
+                if (proc != null)
+                    proc(Error);
+            }
+
+            {
+                // This might be overly paranoid, but i think I should swap these.
+                var proc = _finallyProc;
+                _finallyProc = null;
+                if (proc != null)
+                    proc();
+            }
+
             return this;
         }
 
@@ -465,7 +547,7 @@ namespace DWulf
         /// <remarks>
         /// be sure to give us some kinda idea what went wrong.
         /// </remarks>
-        public Promise<T> Fail(string errorFormat, params object[] args)
+        public Answer<T> Fail(string errorFormat, params object[] args)
         {
             string message = string.Format(errorFormat, args);
             return Fail(new ApplicationException(message));
@@ -515,7 +597,8 @@ namespace DWulf
                     if (!coroutine.MoveNext())
                     {
                         ActiveImp = null;
-                        Succeed();
+                        if (!isDone)
+                            Succeed();  // caller may have already succeeded/failed us.
                         yield break;
                     }
                 } catch (Exception e)
@@ -628,6 +711,8 @@ namespace DWulf
                     if (!coroutine.MoveNext())
                     {
                         ActiveImp = null;
+                        if (!isDone)
+                            Fail(new Exception("Coroutine completed without passing a result."));
                         yield break;
                     }
                 } 
