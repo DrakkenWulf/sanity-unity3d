@@ -37,7 +37,7 @@ namespace DWulf.Async
     /// We 'split' at this point - Promise can be used interchangeably with Promise&lt;T&gt;, but
     /// the corresponding Answer classes cannot.
     /// </remarks>
-    public class Promise
+    public class Promise : CustomYieldInstruction
     {
         #region Implementation
 
@@ -57,6 +57,21 @@ namespace DWulf.Async
 
         #endregion
 
+        #region Yield Support
+
+        /// <summary>
+        /// Indicates if coroutine should be kept suspended.
+        /// </summary>
+        public override bool keepWaiting
+        {
+            get
+            {
+                return !isDone;
+            }
+        }
+        #endregion
+
+
         #region Utility
 
         /// <summary>
@@ -70,25 +85,12 @@ namespace DWulf.Async
         public bool Success { get { return Error == null; } }
 
         /// <summary>
-        /// wait for isDone.
-        /// </summary>
-        /// <remarks>
-        /// Remember that the caller needs to start the coroutine, so it is attached to the caller.
-        /// This way if the caller is destroyed, the coroutine goes with it.
-        /// </remarks>
-        public IEnumerator WaitForCompletion()
-        {
-            while (!isDone)
-                yield return null;
-        }
-
-        /// <summary>
         /// Set a callback. 
         /// </summary>
         /// <remarks>
         /// Preferred is watching isDone to complete because we want to avoid boomerang hell.
         /// WARNING - This may call your object *after* it has been destroyed!
-        /// Safer is to use WaitForCompletion.
+        /// Safer is to use `yield return token;`.
         /// If proc is already done, expect it to be called immediately.
         /// </remarks>
         public Promise OnSucceed(Action doneProc)
@@ -111,7 +113,7 @@ namespace DWulf.Async
         /// <remarks>
         /// Preferred is watching isDone to complete because we want to avoid boomerang hell.
         /// WARNING - This may call your object *after* it has been destroyed!
-        /// Safer is to use WaitForCompletion.
+        /// Safer is to use `yield return token;`.
         /// If proc is already done, expect it to be called immediately.
         /// </remarks>
         public Promise OnFail(Action<Exception> doneProc)
@@ -134,7 +136,7 @@ namespace DWulf.Async
         /// <remarks>
         /// Preferred is watching isDone to complete because we want to avoid boomerang hell.
         /// WARNING - This may call your object *after* it has been destroyed!
-        /// Safer is to use WaitForCompletion.
+        /// Safer is to use `yield return token;`.
         /// If proc is already done, expect it to be called immediately.
         /// </remarks>
         public Promise OnFinally(Action doneProc)
@@ -225,25 +227,12 @@ namespace DWulf.Async
         public new bool Success { get { return Error == null; } }
 
         /// <summary>
-        /// wait for isDone.
-        /// </summary>
-        /// <remarks>
-        /// Remember that the caller needs to start the coroutine, so it is attached to the caller.
-        /// This way if the caller is destroyed, the coroutine goes with it.
-        /// </remarks>
-        public new IEnumerator WaitForCompletion()
-        {
-            while (!isDone)
-                yield return null;
-        }
-
-        /// <summary>
         /// Set a callback. 
         /// </summary>
         /// <remarks>
         /// Preferred is watching isDone to complete because we want to avoid boomerang hell.
         /// WARNING - This may call your object *after* it has been destroyed!
-        /// Safer is to use WaitForCompletion.
+        /// Safer is to use `yield return token;`.
         /// If proc is already done, expect it to be called immediately.
         /// </remarks>
         public Promise<T> OnSucceed(Action<T> result)
@@ -267,7 +256,7 @@ namespace DWulf.Async
         /// <remarks>
         /// Preferred is watching isDone to complete because we want to avoid boomerang hell.
         /// WARNING - This may call your object *after* it has been destroyed!
-        /// Safer is to use WaitForCompletion.
+        /// Safer is to use `yield return token;`.
         /// If proc is already done, expect it to be called immediately.
         /// </remarks>
         public new Promise<T> OnFail(Action<Exception> doneProc)
